@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <script>(function(){var t=localStorage.getItem("sw_theme")||"dark";document.documentElement.setAttribute("data-theme",t);})();
+</script>
+    <meta charset="UTF-8">
+    <title>Inventory — Smart Warehouse</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <style>.filter-bar{display:flex;gap:8px;flex-wrap:wrap;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);margin-bottom:var(--s-4);align-items:center}
+        .filter-bar select,.filter-bar input{height:34px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated);color:var(--text);font-size:13px;font-family:var(--font-body)}
+        .filter-bar select:focus,.filter-bar input:focus{outline:none;border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(79,70,229,.1)}
+        .stock-bar{width:80px;height:6px;background:var(--bg-sunken);border-radius:999px;overflow:hidden}
+        .stock-bar>span{display:block;height:100%;border-radius:999px}
+        .drawer-back{position:fixed;inset:0;background:rgba(15,15,14,.4);z-index:50;display:none}
+        .drawer{position:fixed;right:0;top:0;bottom:0;width:480px;background:var(--bg-elevated);border-left:1px solid var(--border);z-index:51;padding:24px;overflow-y:auto;display:none;box-shadow:-8px 0 24px rgba(0,0,0,.08)}
+        .drawer.open,.drawer-back.open{display:block}
+        .empty-state{text-align:center;padding:60px 24px;color:var(--text-muted)}
+        .empty-state h3{font-family:var(--font-display);font-size:18px;color:var(--text);margin-bottom:8px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">SW</div><span>Smart Warehouse</span></div>
+        <div class="nav-section">
+            <div class="nav-section-title">Workspace</div>
+            <a class="nav-item" href="dashboard.html"><span class="nav-icon">◐</span><span>Dashboard</span></a>
+            <a class="nav-item nav-item--active" href="inventory.html"><span class="nav-icon">▦</span><span>Inventory</span></a>
+            <a class="nav-item" href="products.html"><span class="nav-icon">▢</span><span>Products</span></a>
+            <a class="nav-item" href="orders.html"><span class="nav-icon">⊟</span><span>Orders</span></a>
+            <a class="nav-item" href="shipments.html"><span class="nav-icon">→</span><span>Shipments</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Network</div>
+            <a class="nav-item" href="suppliers.html"><span class="nav-icon">◇</span><span>Suppliers</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Insights</div>
+            <a class="nav-item" href="reports.html"><span class="nav-icon">◉</span><span>Reports</span></a>
+        </div>
+        <div class="user-card">
+            <div class="user-avatar">HS</div>
+            <div class="user-info"><div class="user-name">—</div><div class="user-role">—</div></div>
+            <button class="btn btn--icon" onclick="logout()">⏻</button>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div class="search"><span>⌕</span><input type="text" id="searchBox" placeholder="Search by SKU, product name…"><kbd>⌘K</kbd></div>
+            <div class="row" style="gap:8px">
+                <button class="btn btn--icon" style="position:relative">🔔<span class="notif-badge" style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--accent);display:none"></span></button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme"><span class="theme-toggle-knob">🌙</span></button>
+                <button class="btn btn--secondary" onclick="openTransferDrawer()">⇄ Transfer</button>
+                <button class="btn btn--primary" onclick="openAdjustDrawer()">+ Add Stock</button>
+            </div>
+        </header>
+
+        <main class="content">
+            <div class="page-header fade-up">
+                <div><h1 class="page-title">Inventory</h1><p class="page-sub" id="invSubtitle">Loading…</p></div>
+                <div class="row" style="gap:8px">
+                    <button class="btn btn--secondary" onclick="API.reports.inventoryCSV()">↓ CSV</button>
+                    <button class="btn btn--secondary" onclick="API.reports.inventoryPDF()">↓ PDF</button>
+                </div>
+            </div>
+
+            <div class="filter-bar fade-up" style="animation-delay:.05s">
+                <input type="text" id="filterSearch" placeholder="Filter by name or SKU…" style="flex:1;min-width:180px">
+                <select id="filterWarehouse"><option value="">All Warehouses</option></select>
+                <select id="filterStatus">
+                    <option value="">All Status</option>
+                    <option value="low">Low / Critical</option>
+                    <option value="out">Out of Stock</option>
+                </select>
+                <button class="btn btn--ghost" onclick="clearFilters()">Clear</button>
+            </div>
+
+            <section class="card fade-up" style="animation-delay:.1s">
+                <div class="table-wrap" style="border:0">
+                    <table class="table">
+                        <thead><tr><th>Product</th><th>Warehouse</th><th>On Hand</th><th>Reserved</th><th>Available</th><th>Reorder At</th><th>Status</th><th></th></tr></thead>
+                        <tbody id="invBody"><tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">Loading inventory…</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="row" style="padding:12px 16px;border-top:1px solid var(--divider)" id="invPagination"></div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<div class="drawer-back" id="adjustBack" onclick="closeDrawer('adjust')"></div>
+<aside class="drawer" id="adjustDrawer">
+    <div class="row" style="margin-bottom:20px">
+        <div>
+            <h2 style="font-family:var(--font-display);font-size:20px;font-weight:700" id="drawerTitle">Add Stock</h2>
+            <p class="text-muted" style="font-size:13px;margin-top:4px">Record an inventory movement</p>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn--icon" onclick="closeDrawer('adjust')">✕</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="field">
+            <label>Movement Type</label>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+                <button type="button" id="typeIN" class="btn btn--secondary" style="background:var(--success-bg);color:var(--success);border-color:transparent" onclick="setType('IN')">↑ IN</button>
+                <button type="button" id="typeOUT" class="btn btn--secondary" onclick="setType('OUT')">↓ OUT</button>
+                <button type="button" id="typeADJ" class="btn btn--secondary" onclick="setType('ADJUSTMENT')">± ADJ</button>
+            </div>
+        </div>
+        <div class="field">
+            <label>Warehouse</label>
+            <select id="adjWarehouse" style="height:38px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated);color:var(--text);font-size:14px;font-family:var(--font-body);width:100%">
+                <option value="">Select warehouse…</option>
+            </select>
+            <span class="field-error" id="adjWhError"></span>
+        </div>
+        <div class="field">
+            <label>Product ID</label>
+            <input type="number" id="adjProduct" placeholder="Enter product ID" min="1">
+            <span class="hint">Find IDs on the Products page</span>
+            <span class="field-error" id="adjProdError"></span>
+        </div>
+        <div class="field">
+            <label>Quantity</label>
+            <input type="number" id="adjQty" placeholder="50" min="1" value="1">
+            <span class="field-error" id="adjQtyError"></span>
+        </div>
+        <div class="field">
+            <label>Reference / Notes</label>
+            <input type="text" id="adjRef" placeholder="PO-2026-00012, restock…">
+        </div>
+        <div class="alert alert--info" style="margin:0"><strong>Audit Trail:</strong> Logged with your user ID, IP, and timestamp.</div>
+        <div class="row" style="margin-top:8px">
+            <button class="btn btn--ghost" onclick="closeDrawer('adjust')">Cancel</button>
+            <div class="spacer"></div>
+            <button class="btn btn--primary" id="adjSubmitBtn" onclick="submitAdjust()">Confirm Movement</button>
+        </div>
+    </div>
+</aside>
+
+<div class="drawer-back" id="transferBack" onclick="closeDrawer('transfer')"></div>
+<aside class="drawer" id="transferDrawer">
+    <div class="row" style="margin-bottom:20px">
+        <div><h2 style="font-family:var(--font-display);font-size:20px;font-weight:700">Transfer Stock</h2>
+        <p class="text-muted" style="font-size:13px;margin-top:4px">Move units between warehouses atomically</p></div>
+        <div class="spacer"></div>
+        <button class="btn btn--icon" onclick="closeDrawer('transfer')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="field">
+            <label>Product ID</label>
+            <input type="number" id="trProduct" placeholder="Product ID" min="1">
+        </div>
+        <div class="field">
+            <label>From Warehouse</label>
+            <select id="trFrom" style="height:38px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated);color:var(--text);font-size:14px;font-family:var(--font-body);width:100%">
+                <option value="">Select…</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>To Warehouse</label>
+            <select id="trTo" style="height:38px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated);color:var(--text);font-size:14px;font-family:var(--font-body);width:100%">
+                <option value="">Select…</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>Quantity</label>
+            <input type="number" id="trQty" placeholder="Units to transfer" min="1">
+        </div>
+        <div class="field">
+            <label>Notes</label>
+            <input type="text" id="trNotes" placeholder="Reason for transfer…">
+        </div>
+        <div class="row">
+            <button class="btn btn--ghost" onclick="closeDrawer('transfer')">Cancel</button>
+            <div class="spacer"></div>
+            <button class="btn btn--primary" id="trSubmitBtn" onclick="submitTransfer()">Transfer</button>
+        </div>
+    </div>
+</aside>
+
+<script src="js/api.js"></script>
+<script>if (!requireAuth()) throw new Error();
+populateSidebarUser();
+
+let currentPage = 1;
+let adjType = "IN";
+let warehouses = [];
+
+async function loadWarehouses() {
+    const res = await API.warehouses.list();
+    if (!res?.ok) return;
+    warehouses = res.data.data || [];
+    ["adjWarehouse","trFrom","trTo","filterWarehouse"].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const base = id === "filterWarehouse" ? "<option value=''>All Warehouses</option>" : "<option value=''>Select…</option>";
+        sel.innerHTML = base + warehouses.map(w => `<option value="${w.id}">${w.name}</option>`).join("");
+    });
+}
+
+async function loadInventory(page = 1) {
+    currentPage = page;
+    const params = {
+        page,
+        per_page: 15,
+        warehouse_id: document.getElementById("filterWarehouse").value,
+        status: document.getElementById("filterStatus").value,
+    };
+    const search = document.getElementById("filterSearch").value.trim();
+    if (search) params.product_id = "";
+
+    const res = await API.inventory.list(params);
+    if (!res?.ok) {
+        document.getElementById("invBody").innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--danger)">Failed to load inventory. Is the server running?</td></tr>`;
+        return;
+    }
+    const { data, pagination } = res.data;
+    document.getElementById("invSubtitle").textContent =
+        `${pagination.total} inventory records across all warehouses`;
+    renderTable(data);
+    renderPagination(document.getElementById("invPagination"), pagination, loadInventory);
+}
+
+function renderTable(rows) {
+    const tbody = document.getElementById("invBody");
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No inventory found</h3><p>Try adjusting your filters.</p></div></td></tr>`;
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const pct = r.reorder_level > 0 ? Math.round(r.quantity / r.reorder_level * 100) : 100;
+        const status = r.quantity === 0 ? ["badge--danger","Out of Stock"] :
+                       r.quantity <= r.reorder_level ? ["badge--warning","Low Stock"] : ["badge--success","OK"];
+        const color = pct < 30 ? "var(--danger)" : pct < 80 ? "var(--warning)" : "var(--success)";
+        return `<tr>
+          <td><strong>${r.product_name||"—"}</strong><div class="text-faint mono" style="font-size:11px">${r.sku||""}</div></td>
+          <td>${r.warehouse_name||"—"}</td>
+          <td class="mono">${r.quantity}</td>
+          <td class="mono text-muted">${r.reserved_qty}</td>
+          <td class="mono"><strong style="color:${r.available<5?"var(--danger)":""}">${r.available}</strong></td>
+          <td class="mono">${r.reorder_level}</td>
+          <td><span class="badge ${status[0]}"><span class="badge-dot"></span>${status[1]}</span></td>
+          <td>
+            <button class="btn btn--ghost" style="font-size:12px" onclick="quickAdjust(${r.product_id},${r.warehouse_id})">Adjust</button>
+          </td>
+        </tr>`;
+    }).join("");
+}
+
+function setType(t) {
+    adjType = t;
+    ["IN","OUT","ADJUSTMENT"].forEach(tt => {
+        const btn = document.getElementById("type"+tt);
+        btn.style.background = ""; btn.style.color = ""; btn.style.borderColor = "";
+    });
+    const active = document.getElementById("type"+t);
+    if (t === "IN") { active.style.background="var(--success-bg)"; active.style.color="var(--success)"; active.style.borderColor="transparent"; }
+    else if (t === "OUT") { active.style.background="var(--danger-bg)"; active.style.color="var(--danger)"; active.style.borderColor="transparent"; }
+    else { active.style.background="var(--info-bg)"; active.style.color="var(--info)"; active.style.borderColor="transparent"; }
+}
+
+function openAdjustDrawer(pid="", wid="") {
+    document.getElementById("adjProduct").value = pid;
+    document.getElementById("adjWarehouse").value = wid;
+    document.getElementById("adjQty").value = 1;
+    document.getElementById("adjustDrawer").classList.add("open");
+    document.getElementById("adjustBack").classList.add("open");
+}
+
+function quickAdjust(pid, wid) {
+    openAdjustDrawer(pid, wid);
+}
+
+function openTransferDrawer() {
+    document.getElementById("transferDrawer").classList.add("open");
+    document.getElementById("transferBack").classList.add("open");
+}
+
+function closeDrawer(type) {
+    document.getElementById(type+"Drawer").classList.remove("open");
+    document.getElementById(type+"Back").classList.remove("open");
+}
+
+async function submitAdjust() {
+    const wh  = document.getElementById("adjWarehouse").value;
+    const pid = document.getElementById("adjProduct").value;
+    const qty = parseInt(document.getElementById("adjQty").value);
+    const ref = document.getElementById("adjRef").value;
+
+    if (!wh)  { document.getElementById("adjWhError").textContent="Select a warehouse"; document.getElementById("adjWhError").style.display="block"; return; }
+    if (!pid) { document.getElementById("adjProdError").textContent="Enter product ID"; document.getElementById("adjProdError").style.display="block"; return; }
+    if (!qty || qty < 1) { document.getElementById("adjQtyError").textContent="Quantity must be ≥ 1"; document.getElementById("adjQtyError").style.display="block"; return; }
+
+    ["adjWhError","adjProdError","adjQtyError"].forEach(id => { document.getElementById(id).style.display="none"; });
+
+    const btn = document.getElementById("adjSubmitBtn");
+    Loading.setButton(btn, true);
+    const res = await API.inventory.adjust({ product_id:parseInt(pid), warehouse_id:parseInt(wh), quantity:qty, movement_type:adjType, reference:ref });
+    Loading.setButton(btn, false, "Confirm Movement");
+
+    if (res?.ok) {
+        Toast.success(`Stock ${adjType} of ${qty} units recorded.`);
+        closeDrawer("adjust");
+        loadInventory(currentPage);
+    }
+}
+
+async function submitTransfer() {
+    const pid  = parseInt(document.getElementById("trProduct").value);
+    const from = parseInt(document.getElementById("trFrom").value);
+    const to   = parseInt(document.getElementById("trTo").value);
+    const qty  = parseInt(document.getElementById("trQty").value);
+    const notes= document.getElementById("trNotes").value;
+
+    if (!pid || !from || !to || !qty) { Toast.warning("All fields are required."); return; }
+    if (from === to) { Toast.warning("Source and destination must differ."); return; }
+
+    const btn = document.getElementById("trSubmitBtn");
+    Loading.setButton(btn, true);
+    const res = await API.inventory.transfer({ product_id:pid, from_warehouse_id:from, to_warehouse_id:to, quantity:qty, notes });
+    Loading.setButton(btn, false, "Transfer");
+
+    if (res?.ok) {
+        Toast.success(`Transferred ${qty} units successfully.`);
+        closeDrawer("transfer");
+        loadInventory(currentPage);
+    }
+}
+
+document.getElementById("filterSearch").addEventListener("input", debounce(() => loadInventory(1), 350));
+document.getElementById("filterWarehouse").addEventListener("change", () => loadInventory(1));
+document.getElementById("filterStatus").addEventListener("change",    () => loadInventory(1));
+
+function clearFilters() {
+    document.getElementById("filterSearch").value = "";
+    document.getElementById("filterWarehouse").value = "";
+    document.getElementById("filterStatus").value = "";
+    loadInventory(1);
+}
+
+loadWarehouses();
+loadInventory();
+
+document.addEventListener("DOMContentLoaded", () => setType("IN"));
+</script>
+</body>
+</html>

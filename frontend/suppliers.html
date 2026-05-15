@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <script>(function(){var t=localStorage.getItem("sw_theme")||"dark";document.documentElement.setAttribute("data-theme",t);})();
+</script>
+    <meta charset="UTF-8">
+    <title>Suppliers — Smart Warehouse</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <style>.supplier-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--s-4)}
+        .supplier-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;transition:all .15s}
+        .supplier-card:hover{border-color:var(--brand-2);box-shadow:var(--sh-3)}
+        .supplier-logo{width:44px;height:44px;border-radius:10px;color:#fff;display:grid;place-items:center;font-weight:700;font-family:var(--font-display);flex-shrink:0;font-size:15px}
+        .perf-bar{height:6px;background:var(--bg-sunken);border-radius:999px;overflow:hidden;margin-top:6px}
+        .perf-bar>span{display:block;height:100%;border-radius:999px}
+        .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--divider)}
+        .metric-label{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.04em}
+        .metric-value{font-family:var(--font-display);font-size:20px;font-weight:700;margin-top:2px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .skeleton{background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--surface-2) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:var(--r-md)}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">SW</div><span>Smart Warehouse</span></div>
+        <div class="nav-section">
+            <div class="nav-section-title">Workspace</div>
+            <a class="nav-item" href="dashboard.html"><span class="nav-icon">◐</span><span>Dashboard</span></a>
+            <a class="nav-item" href="inventory.html"><span class="nav-icon">▦</span><span>Inventory</span></a>
+            <a class="nav-item" href="products.html"><span class="nav-icon">▢</span><span>Products</span></a>
+            <a class="nav-item" href="orders.html"><span class="nav-icon">⊟</span><span>Orders</span></a>
+            <a class="nav-item" href="shipments.html"><span class="nav-icon">→</span><span>Shipments</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Network</div>
+            <a class="nav-item nav-item--active" href="suppliers.html"><span class="nav-icon">◇</span><span>Suppliers</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Insights</div>
+            <a class="nav-item" href="reports.html"><span class="nav-icon">◉</span><span>Reports</span></a>
+        </div>
+        <div class="user-card">
+            <div class="user-avatar">HS</div>
+            <div class="user-info"><div class="user-name">—</div><div class="user-role">—</div></div>
+            <button class="btn btn--icon" onclick="logout()">⏻</button>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div class="search"><span>⌕</span><input type="text" placeholder="Search suppliers…"><kbd>⌘K</kbd></div>
+            <div class="row" style="gap:8px">
+                <button class="btn btn--icon" style="position:relative">🔔<span class="notif-badge" style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--accent);display:none"></span></button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme"><span class="theme-toggle-knob">🌙</span></button>
+                <button class="btn btn--secondary" onclick="location.href='#pos'">+ Create PO</button>
+            </div>
+        </header>
+
+        <main class="content">
+            <div class="page-header fade-up">
+                <div><h1 class="page-title">Suppliers</h1><p class="page-sub">Performance auto-calculated: delivery time + fulfillment rate</p></div>
+                <div class="row" style="gap:8px">
+                    <button class="btn btn--secondary" onclick="API.reports.suppliersPDF()">↓ PDF</button>
+                    <button class="btn btn--secondary" onclick="API.reports.suppliersCSV()">↓ CSV</button>
+                </div>
+            </div>
+
+            <div class="supplier-grid fade-up" style="animation-delay:.05s" id="supplierGrid">
+                ${[1,2,3,4].map(()=>`<div class="supplier-card"><div class="skeleton" style="height:80px;border-radius:var(--r-md)"></div></div>`).join("")}
+            </div>
+
+            <section class="card fade-up" style="animation-delay:.1s;margin-top:var(--s-6)" id="pos">
+                <div class="card-head">
+                    <div><h3 class="card-title">Purchase Orders</h3><p class="card-sub">Track open POs and partial deliveries</p></div>
+                    <button class="btn btn--secondary" style="font-size:12px" onclick="Toast.info('PO creation via API — use POST /api/suppliers/purchase-orders')">+ Create PO</button>
+                </div>
+                <div class="table-wrap" style="border:0">
+                    <table class="table">
+                        <thead><tr><th>PO Number</th><th>Supplier</th><th>Status</th><th>Expected</th><th>Created</th></tr></thead>
+                        <tbody id="posBody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">Loading purchase orders…</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="row" style="padding:12px 16px;border-top:1px solid var(--divider)" id="posPagination"></div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>if (!requireAuth()) throw new Error();
+populateSidebarUser();
+
+const LOGO_COLORS = ["#4f46e5","#0ea5e9","#f97316","#15803d","#e11d48","#7c3aed"];
+
+async function loadSuppliers() {
+    const res = await API.suppliers.list({ per_page: 20 });
+    if (!res?.ok) {
+        document.getElementById("supplierGrid").innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--danger)">Failed to load.</div>`;
+        return;
+    }
+    const suppliers = res.data.data || [];
+    const grid = document.getElementById("supplierGrid");
+    if (!suppliers.length) {
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text-muted)">No suppliers found.</div>`;
+        return;
+    }
+    grid.innerHTML = suppliers.map((s, i) => {
+        const initials = s.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+        const color    = LOGO_COLORS[i % LOGO_COLORS.length];
+        const rating   = parseFloat(s.rating || 0);
+        const stars    = "★".repeat(Math.round(rating)) + "☆".repeat(5 - Math.round(rating));
+        const otRate   = parseFloat(s.on_time_rate || 0);
+        const barColor = otRate >= 85 ? "var(--success)" : otRate >= 70 ? "var(--warning)" : "var(--danger)";
+        return `<div class="supplier-card">
+          <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+            <div class="supplier-logo" style="background:${color}">${initials}</div>
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:15px">${s.name}</div>
+              <div style="font-size:12px;color:var(--text-faint);margin-top:2px">${s.email||"—"} · ${s.phone||"—"}</div>
+              <div class="row" style="margin-top:6px;gap:8px">
+                <span style="color:var(--accent);font-size:14px;letter-spacing:1px">${stars}</span>
+                <span class="text-muted" style="font-size:12px">${rating.toFixed(1)} (${s.total_orders} orders)</span>
+              </div>
+            </div>
+            <button class="btn btn--ghost" style="font-size:12px" onclick="recalcPerf(${s.id})">↻ Recalc</button>
+          </div>
+          <div>
+            <div class="row" style="font-size:12px"><span class="text-muted">On-time delivery</span><div class="spacer"></div><strong>${otRate.toFixed(1)}%</strong></div>
+            <div class="perf-bar"><span style="width:${otRate}%;background:${barColor}"></span></div>
+          </div>
+          <div class="metric-grid">
+            <div><div class="metric-label">Total POs</div><div class="metric-value">${s.total_orders}</div></div>
+            <div><div class="metric-label">On-Time</div><div class="metric-value">${s.on_time_orders}</div></div>
+          </div>
+        </div>`;
+    }).join("");
+}
+
+async function loadPOs(page = 1) {
+    const res = await API.suppliers.pos({ page, per_page: 10 });
+    if (!res?.ok) return;
+    const { data, pagination } = res.data;
+    const STATUS_MAP = { DRAFT:"badge--neutral", SENT:"badge--info", CONFIRMED:"badge--info",
+                         PARTIALLY_RECEIVED:"badge--warning", RECEIVED:"badge--success" };
+    const tbody = document.getElementById("posBody");
+    if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No purchase orders found.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = data.map(po => `
+      <tr>
+        <td class="mono"><strong>${po.po_number||"—"}</strong></td>
+        <td>${po.supplier||"—"}</td>
+        <td><span class="badge ${STATUS_MAP[po.status]||"badge--neutral"}"><span class="badge-dot"></span>${po.status}</span></td>
+        <td class="text-muted" style="font-size:12px">${po.expected_date||"—"}</td>
+        <td class="text-muted" style="font-size:12px">${po.created_at ? new Date(po.created_at).toLocaleDateString() : "—"}</td>
+      </tr>`).join("");
+    renderPagination(document.getElementById("posPagination"), pagination, loadPOs);
+}
+
+async function recalcPerf(supplierId) {
+    const res = await API.suppliers.performance(supplierId);
+    if (res?.ok) {
+        Toast.success(`Performance recalculated: ${res.data.data.rating?.toFixed(2)} ★`);
+        loadSuppliers();
+    }
+}
+
+loadSuppliers();
+loadPOs();
+</script>
+</body>
+</html>

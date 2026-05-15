@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <script>(function(){var t=localStorage.getItem("sw_theme")||"dark";document.documentElement.setAttribute("data-theme",t);})();
+</script>
+    <meta charset="UTF-8">
+    <title>Orders — Smart Warehouse</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <style>.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:var(--s-5)}
+        .pipe-stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px;cursor:pointer;transition:all .15s}
+        .pipe-stage:hover,.pipe-stage--active{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(79,70,229,.08)}
+        .pipe-label{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.04em}
+        .pipe-count{font-family:var(--font-display);font-size:26px;font-weight:700;margin-top:4px}
+        .pipe-meta{font-size:11px;color:var(--text-muted);margin-top:2px}
+        .pipe-bar{height:3px;background:var(--bg-sunken);border-radius:999px;margin-top:10px;overflow:hidden}
+        .pipe-bar>span{display:block;height:100%}
+        .split-pill{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;background:var(--info-bg);color:var(--info);border-radius:999px;font-size:11px;font-weight:500}
+        .drawer-back{position:fixed;inset:0;background:rgba(15,15,14,.4);z-index:50;display:none}
+        .drawer{position:fixed;right:0;top:0;bottom:0;width:560px;background:var(--bg-elevated);border-left:1px solid var(--border);z-index:51;padding:0;overflow-y:auto;display:none;box-shadow:-8px 0 24px rgba(0,0,0,.08)}
+        .drawer.open,.drawer-back.open{display:block}
+        .new-order-drawer{position:fixed;right:0;top:0;bottom:0;width:500px;background:var(--bg-elevated);border-left:1px solid var(--border);z-index:51;padding:24px;overflow-y:auto;display:none;box-shadow:-8px 0 24px rgba(0,0,0,.08)}
+        .new-order-drawer.open{display:block}
+        .order-item-row{display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end;padding:8px;background:var(--bg-sunken);border-radius:var(--r-md);margin-bottom:6px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">SW</div><span>Smart Warehouse</span></div>
+        <div class="nav-section">
+            <div class="nav-section-title">Workspace</div>
+            <a class="nav-item" href="dashboard.html"><span class="nav-icon">◐</span><span>Dashboard</span></a>
+            <a class="nav-item" href="inventory.html"><span class="nav-icon">▦</span><span>Inventory</span></a>
+            <a class="nav-item" href="products.html"><span class="nav-icon">▢</span><span>Products</span></a>
+            <a class="nav-item nav-item--active" href="orders.html"><span class="nav-icon">⊟</span><span>Orders</span></a>
+            <a class="nav-item" href="shipments.html"><span class="nav-icon">→</span><span>Shipments</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Network</div>
+            <a class="nav-item" href="suppliers.html"><span class="nav-icon">◇</span><span>Suppliers</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Insights</div>
+            <a class="nav-item" href="reports.html"><span class="nav-icon">◉</span><span>Reports</span></a>
+        </div>
+        <div class="user-card">
+            <div class="user-avatar">HS</div>
+            <div class="user-info"><div class="user-name">—</div><div class="user-role">—</div></div>
+            <button class="btn btn--icon" onclick="logout()">⏻</button>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div class="search"><span>⌕</span><input type="text" id="searchBox" placeholder="Search order number, customer…"><kbd>⌘K</kbd></div>
+            <div class="row" style="gap:8px">
+                <button class="btn btn--icon" style="position:relative">🔔<span class="notif-badge" style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--accent);display:none"></span></button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme"><span class="theme-toggle-knob">🌙</span></button>
+                <button class="btn btn--primary" onclick="openNewOrderDrawer()">+ New Order</button>
+            </div>
+        </header>
+
+        <main class="content">
+            <div class="page-header fade-up">
+                <div><h1 class="page-title">Orders</h1><p class="page-sub" id="ordersSubtitle">Loading…</p></div>
+                <div class="row" style="gap:8px">
+                    <button class="btn btn--secondary" onclick="API.reports.ordersPDF()">↓ PDF</button>
+                    <button class="btn btn--secondary" onclick="API.reports.ordersCSV()">↓ CSV</button>
+                </div>
+            </div>
+
+            <div class="pipeline fade-up" style="animation-delay:.05s" id="pipeline">
+                <div class="pipe-stage pipe-stage--active" onclick="filterByStatus('')">
+                    <div class="pipe-label">All</div><div class="pipe-count" id="pipeAll">—</div><div class="pipe-meta">Total orders</div>
+                    <div class="pipe-bar"><span style="width:100%;background:var(--brand-2)"></span></div>
+                </div>
+                <div class="pipe-stage" onclick="filterByStatus('PENDING')">
+                    <div class="pipe-label">Pending</div><div class="pipe-count" id="pipePending">—</div><div class="pipe-meta">Awaiting approval</div>
+                    <div class="pipe-bar"><span style="width:100%;background:var(--warning)"></span></div>
+                </div>
+                <div class="pipe-stage" onclick="filterByStatus('APPROVED')">
+                    <div class="pipe-label">Approved</div><div class="pipe-count" id="pipeApproved">—</div><div class="pipe-meta">Stock reserved</div>
+                    <div class="pipe-bar"><span style="width:100%;background:var(--info)"></span></div>
+                </div>
+                <div class="pipe-stage" onclick="filterByStatus('SHIPPED')">
+                    <div class="pipe-label">Shipped</div><div class="pipe-count" id="pipeShipped">—</div><div class="pipe-meta">In transit</div>
+                    <div class="pipe-bar"><span style="width:100%;background:var(--accent)"></span></div>
+                </div>
+                <div class="pipe-stage" onclick="filterByStatus('DELIVERED')">
+                    <div class="pipe-label">Delivered</div><div class="pipe-count" id="pipeDelivered">—</div><div class="pipe-meta">Completed</div>
+                    <div class="pipe-bar"><span style="width:100%;background:var(--success)"></span></div>
+                </div>
+            </div>
+
+            <section class="card fade-up" style="animation-delay:.1s">
+                <div class="card-head">
+                    <div><h3 class="card-title">All Orders</h3><p class="card-sub">Click an order to view details and timeline</p></div>
+                </div>
+                <div class="table-wrap" style="border:0">
+                    <table class="table">
+                        <thead><tr><th>Order #</th><th>Customer</th><th>Items</th><th>Fulfillment</th><th>Total</th><th>Status</th><th>Created</th><th></th></tr></thead>
+                        <tbody id="ordersBody"><tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">Loading orders…</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="row" style="padding:12px 16px;border-top:1px solid var(--divider)" id="ordersPagination"></div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<div class="drawer-back" id="detailBack" onclick="closeDetail()"></div>
+<aside class="drawer" id="detailDrawer">
+    <div style="padding:24px;border-bottom:1px solid var(--divider)">
+        <div class="row">
+            <div id="detailHeader"><span class="text-muted">Loading…</span></div>
+            <div class="spacer"></div>
+            <button class="btn btn--icon" onclick="closeDetail()">✕</button>
+        </div>
+    </div>
+    <div style="padding:24px" id="detailBody">Loading order details…</div>
+</aside>
+
+<div class="drawer-back" id="newOrderBack" onclick="closeNewOrder()"></div>
+<aside class="new-order-drawer" id="newOrderDrawer">
+    <div class="row" style="margin-bottom:20px">
+        <div><h2 style="font-family:var(--font-display);font-size:20px;font-weight:700">New Order</h2>
+        <p class="text-muted" style="font-size:13px;margin-top:4px">Multi-warehouse fulfillment auto-planned</p></div>
+        <div class="spacer"></div>
+        <button class="btn btn--icon" onclick="closeNewOrder()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="field">
+            <label>Customer ID</label>
+            <input type="number" id="noCustomer" placeholder="Customer ID" min="1">
+            <span class="hint">Find IDs in the customers table</span>
+        </div>
+        <div class="field">
+            <label>Notes</label>
+            <input type="text" id="noNotes" placeholder="Optional notes…">
+        </div>
+        <div>
+            <div class="row" style="margin-bottom:8px">
+                <label style="font-size:13px;font-weight:500">Order Items</label>
+                <div class="spacer"></div>
+                <button class="btn btn--ghost" style="font-size:12px" onclick="addItemRow()">+ Add Item</button>
+            </div>
+            <div id="noItems">
+                <div class="order-item-row">
+                    <div class="field" style="margin:0"><input type="number" class="item-pid" placeholder="Product ID" min="1"></div>
+                    <div class="field" style="margin:0"><input type="number" class="item-qty" placeholder="Qty" min="1" value="1"></div>
+                    <button class="btn btn--icon" onclick="this.closest('.order-item-row').remove()">✕</button>
+                </div>
+            </div>
+        </div>
+        <div class="alert alert--info" style="margin:0">Stock will be reserved atomically. Order placed as PENDING.</div>
+        <div class="row">
+            <button class="btn btn--ghost" onclick="closeNewOrder()">Cancel</button>
+            <div class="spacer"></div>
+            <button class="btn btn--primary" id="noSubmitBtn" onclick="submitNewOrder()">Place Order</button>
+        </div>
+    </div>
+</aside>
+
+<script src="js/api.js"></script>
+<script>if (!requireAuth()) throw new Error();
+populateSidebarUser();
+RealtimeNotifications.connect();
+
+let currentPage = 1;
+let currentStatus = "";
+
+const statusBadge = s => {
+    const map = { PENDING:"badge--warning", APPROVED:"badge--info", PROCESSING:"badge--neutral",
+                  SHIPPED:"badge--info", DELIVERED:"badge--success", CANCELLED:"badge--danger", RETURNED:"badge--neutral" };
+    return `<span class="badge ${map[s]||"badge--neutral"}"><span class="badge-dot"></span>${s}</span>`;
+};
+const fmtDate = d => d ? new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—";
+const fmtTime = d => d ? new Date(d).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+
+async function loadOrders(page = 1) {
+    currentPage = page;
+    const params = { page, per_page: 15 };
+    if (currentStatus) params.status = currentStatus;
+
+    const res = await API.orders.list(params);
+    if (!res?.ok) {
+        document.getElementById("ordersBody").innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--danger)">Failed to load. Is the server running?</td></tr>`;
+        return;
+    }
+    const { data, pagination } = res.data;
+    document.getElementById("ordersSubtitle").textContent = `${pagination.total.toLocaleString()} orders · Click to view details`;
+    document.getElementById("pipeAll").textContent = pagination.total.toLocaleString();
+
+    renderOrders(data);
+    renderPagination(document.getElementById("ordersPagination"), pagination, loadOrders);
+}
+
+function renderOrders(orders) {
+    const tbody = document.getElementById("ordersBody");
+    if (!orders.length) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">No orders found.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = orders.map(o => `
+      <tr style="cursor:pointer" onclick="openDetail(${o.id})">
+        <td class="mono"><strong>${o.order_number||"—"}</strong></td>
+        <td>${o.customer||"—"}</td>
+        <td class="text-muted">${o.items?.length ?? "—"} items</td>
+        <td>${o.items?.length > 1 ? '<span class="split-pill">⇄ Split</span>' : "Single WH"}</td>
+        <td class="mono">₨ ${Number(o.total_amount||0).toLocaleString()}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td class="text-muted" style="font-size:12px">${fmtDate(o.created_at)}</td>
+        <td><button class="btn btn--ghost" style="font-size:12px">→</button></td>
+      </tr>`).join("");
+}
+
+async function loadPipelineCounts() {
+    const statuses = ["PENDING","APPROVED","SHIPPED","DELIVERED"];
+    const results  = await Promise.all(statuses.map(s => API.orders.list({ status:s, per_page:1, page:1 })));
+    const ids = { PENDING:"pipePending", APPROVED:"pipeApproved", SHIPPED:"pipeShipped", DELIVERED:"pipeDelivered" };
+    statuses.forEach((s,i) => {
+        if (results[i]?.ok) document.getElementById(ids[s]).textContent = results[i].data.pagination.total.toLocaleString();
+    });
+}
+
+function filterByStatus(status) {
+    currentStatus = status;
+    document.querySelectorAll(".pipe-stage").forEach(el => el.classList.remove("pipe-stage--active"));
+    event.currentTarget.classList.add("pipe-stage--active");
+    loadOrders(1);
+}
+
+async function openDetail(id) {
+    document.getElementById("detailDrawer").classList.add("open");
+    document.getElementById("detailBack").classList.add("open");
+    document.getElementById("detailBody").innerHTML = "Loading…";
+    document.getElementById("detailHeader").innerHTML = "Loading order…";
+
+    const res = await API.orders.get(id);
+    if (!res?.ok) { document.getElementById("detailBody").innerHTML = "Failed to load order."; return; }
+    const o = res.data.data;
+
+    document.getElementById("detailHeader").innerHTML = `
+      ${statusBadge(o.status)}
+      <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;margin-top:8px">${o.order_number}</h2>
+      <p class="text-muted" style="font-size:13px;margin-top:2px">Created ${fmtTime(o.created_at)}</p>`;
+
+    const items = o.items || [];
+    const timeline = o.timeline || [];
+
+    document.getElementById("detailBody").innerHTML = `
+      <div style="font-weight:600;font-size:14px;margin-bottom:12px">${o.customer||"—"}</div>
+
+      <h3 style="font-family:var(--font-display);font-size:14px;font-weight:600;margin:0 0 10px">Order Items
+        ${items.length > 1 ? '<span class="split-pill" style="margin-left:8px">⇄ Multi-WH</span>' : ""}
+      </h3>
+      <div style="background:var(--bg-sunken);border-radius:var(--r-md);overflow:hidden;margin-bottom:16px">
+        ${items.map(i=>`
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--divider);font-size:13px">
+            <div><strong>${i.product_name||"Product #"+i.product_id}</strong>
+              <div class="text-faint" style="font-size:11px">× ${i.quantity} from ${i.warehouse_name||"WH #"+i.warehouse_id}</div>
+            </div>
+            <span class="text-muted">@ ₨ ${Number(i.unit_price).toLocaleString()}</span>
+            <strong class="mono">₨ ${Number(i.line_total).toLocaleString()}</strong>
+          </div>`).join("")}
+        <div style="display:flex;justify-content:space-between;padding:12px;font-weight:700">
+          <span>Order Total</span>
+          <span class="mono">₨ ${Number(o.total_amount||0).toLocaleString()}</span>
+        </div>
+      </div>
+
+      <h3 style="font-family:var(--font-display);font-size:14px;font-weight:600;margin:0 0 10px">Timeline</h3>
+      <div class="timeline">
+        ${timeline.map(t=>`
+          <div class="timeline-item">
+            <div class="timeline-dot timeline-dot--info"></div>
+            <div class="timeline-time">${fmtTime(t.created_at)}</div>
+            <div style="font-size:13px"><strong>${t.action}</strong> — ${t.description||""}</div>
+          </div>`).join("") || "<p class='text-muted' style='font-size:13px'>No timeline entries.</p>"}
+      </div>
+
+      ${["PENDING","APPROVED","PROCESSING"].includes(o.status) ? `
+      <div style="display:flex;gap:8px;margin-top:24px">
+        ${o.status === "PENDING" ? `<button class="btn btn--primary" onclick="approveOrder(${o.id})">✓ Approve</button>` : ""}
+        <div class="spacer"></div>
+        <button class="btn btn--danger" onclick="cancelOrder(${o.id})">Cancel Order</button>
+      </div>` : ""}`;
+}
+
+async function approveOrder(id) {
+    const btn = event.target;
+    Loading.setButton(btn, true);
+    const res = await API.orders.approve(id);
+    Loading.setButton(btn, false, "✓ Approve");
+    if (res?.ok) {
+        Toast.success("Order approved successfully!");
+        closeDetail();
+        loadOrders(currentPage);
+        loadPipelineCounts();
+    }
+}
+
+async function cancelOrder(id) {
+    if (!confirm("Are you sure you want to cancel this order? Reserved stock will be released.")) return;
+    const res = await API.orders.cancel(id, "Manually cancelled via admin panel");
+    if (res?.ok) {
+        Toast.success("Order cancelled. Stock released.");
+        closeDetail();
+        loadOrders(currentPage);
+        loadPipelineCounts();
+    }
+}
+
+function closeDetail() {
+    document.getElementById("detailDrawer").classList.remove("open");
+    document.getElementById("detailBack").classList.remove("open");
+}
+
+function openNewOrderDrawer() {
+    document.getElementById("newOrderDrawer").classList.add("open");
+    document.getElementById("newOrderBack").classList.add("open");
+}
+function closeNewOrder() {
+    document.getElementById("newOrderDrawer").classList.remove("open");
+    document.getElementById("newOrderBack").classList.remove("open");
+}
+
+function addItemRow() {
+    const row = document.createElement("div");
+    row.className = "order-item-row";
+    row.innerHTML = `
+      <div class="field" style="margin:0"><input type="number" class="item-pid" placeholder="Product ID" min="1"></div>
+      <div class="field" style="margin:0"><input type="number" class="item-qty" placeholder="Qty" min="1" value="1"></div>
+      <button class="btn btn--icon" onclick="this.closest('.order-item-row').remove()">✕</button>`;
+    document.getElementById("noItems").appendChild(row);
+}
+
+async function submitNewOrder() {
+    const customerId = parseInt(document.getElementById("noCustomer").value);
+    const notes      = document.getElementById("noNotes").value;
+    const rows       = document.querySelectorAll(".order-item-row");
+
+    if (!customerId) { Toast.warning("Customer ID is required."); return; }
+
+    const items = [];
+    let valid = true;
+    rows.forEach(row => {
+        const pid = parseInt(row.querySelector(".item-pid").value);
+        const qty = parseInt(row.querySelector(".item-qty").value);
+        if (!pid || !qty || qty < 1) { valid = false; return; }
+        items.push({ product_id: pid, quantity: qty });
+    });
+    if (!valid || !items.length) { Toast.warning("Add at least one valid item."); return; }
+
+    const btn = document.getElementById("noSubmitBtn");
+    Loading.setButton(btn, true);
+    const res = await API.orders.create({ customer_id: customerId, items, notes });
+    Loading.setButton(btn, false, "Place Order");
+
+    if (res?.ok) {
+        Toast.success(`Order ${res.data.data.order_number} placed!`);
+        closeNewOrder();
+        loadOrders(1);
+        loadPipelineCounts();
+    }
+}
+
+function onRealtimeNotification(n) {
+    if (n.type === "ORDER_STATUS") { loadOrders(currentPage); loadPipelineCounts(); }
+}
+
+loadOrders();
+loadPipelineCounts();
+</script>
+</body>
+</html>

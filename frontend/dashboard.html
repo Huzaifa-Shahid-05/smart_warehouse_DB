@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <script>(function(){var t=localStorage.getItem("sw_theme")||"dark";document.documentElement.setAttribute("data-theme",t);})();
+</script>
+    <meta charset="UTF-8">
+    <title>Dashboard — Smart Warehouse</title>
+    <link rel="stylesheet" href="css/design-system.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>.dash-grid{display:grid;grid-template-columns:2fr 1fr;gap:var(--s-5);margin-top:var(--s-5)}
+        @media(max-width:1100px){.dash-grid{grid-template-columns:1fr}}
+        .activity-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--divider)}
+        .activity-item:last-child{border-bottom:none}
+        .activity-dot{width:8px;height:8px;border-radius:50%;margin-top:7px;flex-shrink:0}
+        .activity-text{font-size:13px;color:var(--text);line-height:1.5}
+        .activity-meta{font-size:11px;color:var(--text-faint);margin-top:2px}
+        .stock-bar{width:80px;height:6px;background:var(--bg-sunken);border-radius:999px;overflow:hidden}
+        .stock-bar>span{display:block;height:100%;border-radius:999px}
+        .skeleton{background:linear-gradient(90deg,var(--bg-sunken) 25%,var(--surface-2) 50%,var(--bg-sunken) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:var(--r-md)}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">SW</div><span>Smart Warehouse</span></div>
+        <div class="nav-section">
+            <div class="nav-section-title">Workspace</div>
+            <a class="nav-item nav-item--active" href="dashboard.html"><span class="nav-icon">◐</span><span>Dashboard</span></a>
+            <a class="nav-item" href="inventory.html"><span class="nav-icon">▦</span><span>Inventory</span><span class="nav-badge" id="lowStockBadge" style="display:none">0</span></a>
+            <a class="nav-item" href="products.html"><span class="nav-icon">▢</span><span>Products</span></a>
+            <a class="nav-item" href="orders.html"><span class="nav-icon">⊟</span><span>Orders</span><span class="nav-badge" id="pendingBadge" style="display:none">0</span></a>
+            <a class="nav-item" href="shipments.html"><span class="nav-icon">→</span><span>Shipments</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Network</div>
+            <a class="nav-item" href="suppliers.html"><span class="nav-icon">◇</span><span>Suppliers</span></a>
+            <a class="nav-item" href="#"><span class="nav-icon">◫</span><span>Warehouses</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Insights</div>
+            <a class="nav-item" href="reports.html"><span class="nav-icon">◉</span><span>Reports</span></a>
+        </div>
+        <div class="user-card">
+            <div class="user-avatar">HS</div>
+            <div class="user-info"><div class="user-name">Loading…</div><div class="user-role">—</div></div>
+            <button class="btn btn--icon" onclick="logout()" title="Log out">⏻</button>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div class="search">
+                <span>⌕</span>
+                <input type="text" placeholder="Search orders, products, suppliers…" id="globalSearch">
+                <kbd>⌘K</kbd>
+            </div>
+            <div class="row" style="gap:8px">
+                <button class="btn btn--icon" id="notifBtn" style="position:relative" onclick="location.href='#notifications'">
+                    🔔<span class="notif-badge" style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--accent);display:none"></span>
+                </button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme"><span class="theme-toggle-knob">🌙</span></button>
+                <button class="btn btn--primary" onclick="location.href='orders.html'">+ New Order</button>
+            </div>
+        </header>
+
+        <main class="content">
+            <div class="page-header fade-up">
+                <div>
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-sub" id="dashDate">Loading…</p>
+                </div>
+                <div class="row" style="gap:8px">
+                    <button class="btn btn--secondary" onclick="loadAll()">↻ Refresh</button>
+                    <button class="btn btn--secondary" onclick="API.reports.inventoryPDF()">↓ Export</button>
+                </div>
+            </div>
+
+            <div class="kpi-grid fade-up" style="animation-delay:.05s" id="kpiGrid">
+                <div class="kpi-card"><div class="skeleton" style="height:14px;width:80px;margin-bottom:8px"></div><div class="skeleton" style="height:32px;width:60px"></div></div>
+                <div class="kpi-card"><div class="skeleton" style="height:14px;width:80px;margin-bottom:8px"></div><div class="skeleton" style="height:32px;width:60px"></div></div>
+                <div class="kpi-card"><div class="skeleton" style="height:14px;width:80px;margin-bottom:8px"></div><div class="skeleton" style="height:32px;width:60px"></div></div>
+                <div class="kpi-card"><div class="skeleton" style="height:14px;width:80px;margin-bottom:8px"></div><div class="skeleton" style="height:32px;width:60px"></div></div>
+            </div>
+
+            <div class="dash-grid">
+                <div class="col" style="gap:var(--s-5)">
+                    <section class="card fade-up" style="animation-delay:.1s">
+                        <div class="card-head">
+                            <div><h3 class="card-title">Monthly Order Trend</h3><p class="card-sub">Orders processed over the past 12 months</p></div>
+                        </div>
+                        <div class="card-body" style="height:280px"><canvas id="trendChart"></canvas></div>
+                    </section>
+
+                    <section class="card fade-up" style="animation-delay:.15s">
+                        <div class="card-head">
+                            <div><h3 class="card-title">Low Stock Alerts</h3><p class="card-sub">Items at or below reorder threshold</p></div>
+                            <a href="inventory.html" class="btn btn--ghost" style="font-size:12px">View all →</a>
+                        </div>
+                        <div class="table-wrap" style="border:0;border-radius:0">
+                            <table class="table">
+                                <thead><tr><th>Product</th><th>Warehouse</th><th>Stock</th><th>Reorder At</th><th>Status</th><th></th></tr></thead>
+                                <tbody id="lowStockBody"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)"><div class="skeleton" style="height:16px;margin:4px 0"></div></td></tr></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="col" style="gap:var(--s-5)">
+                    <section class="card fade-up" style="animation-delay:.2s">
+                        <div class="card-head"><h3 class="card-title">Quick Actions</h3></div>
+                        <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <button class="quick-action" onclick="location.href='orders.html'"><span class="qa-icon">+</span>New Order</button>
+                            <button class="quick-action" onclick="location.href='inventory.html'"><span class="qa-icon">↑</span>Add Stock</button>
+                            <button class="quick-action" onclick="location.href='inventory.html'"><span class="qa-icon">⇄</span>Transfer</button>
+                            <button class="quick-action" onclick="location.href='inventory.html'"><span class="qa-icon">▦</span>Inventory</button>
+                        </div>
+                    </section>
+
+                    <section class="card fade-up" style="animation-delay:.25s">
+                        <div class="card-head">
+                            <div><h3 class="card-title">Recent Activity</h3><p class="card-sub">Live system timeline</p></div>
+                            <span class="badge badge--info"><span class="badge-dot"></span>Live</span>
+                        </div>
+                        <div class="card-body" id="activityFeed" style="min-height:100px">
+                            <div class="skeleton" style="height:14px;margin:8px 0"></div>
+                            <div class="skeleton" style="height:14px;margin:8px 0;width:80%"></div>
+                            <div class="skeleton" style="height:14px;margin:8px 0;width:90%"></div>
+                        </div>
+                    </section>
+
+                    <section class="card fade-up" style="animation-delay:.3s">
+                        <div class="card-head"><h3 class="card-title">Stockout Forecast</h3></div>
+                        <div class="card-body" id="stockoutForecast">
+                            <div class="skeleton" style="height:60px;border-radius:var(--r-md)"></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<style>.quick-action{padding:14px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:500;color:var(--text);font-family:var(--font-body)}
+.quick-action:hover{border-color:var(--brand-2);background:var(--surface-2)}
+.qa-icon{width:28px;height:28px;border-radius:7px;background:var(--brand-2);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+</style>
+
+<script src="js/api.js"></script>
+<script>if (!requireAuth()) throw new Error("Not authenticated");
+populateSidebarUser();
+RealtimeNotifications.connect();
+
+const now = new Date();
+document.getElementById("dashDate").textContent =
+    `Operations overview · ${now.toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}`;
+
+let trendChart = null;
+
+function renderKPIs(data) {
+    const grid = document.getElementById("kpiGrid");
+    grid.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-label">Total Orders</div>
+        <div class="kpi-value">${data.total_orders?.toLocaleString() ?? "—"}</div>
+        <div class="kpi-delta kpi-delta--up">Live from database</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Low Stock Items</div>
+        <div class="kpi-value" style="color:var(--warning)">${data.low_stock_items ?? "—"}</div>
+        <div class="kpi-delta kpi-delta--down">${data.low_stock_items > 0 ? "⚠ Needs attention" : "All OK"}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pending Orders</div>
+        <div class="kpi-value">${data.pending_orders ?? "—"}</div>
+        <div class="kpi-delta">Awaiting approval</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Inventory Value</div>
+        <div class="kpi-value">₨ ${data.inventory_value ? (data.inventory_value/1e6).toFixed(1)+"M" : "—"}</div>
+        <div class="kpi-delta kpi-delta--up">Across all warehouses</div>
+      </div>
+    `;
+
+    if (data.low_stock_items > 0) {
+        const b = document.getElementById("lowStockBadge");
+        b.textContent = data.low_stock_items; b.style.display = "inline-block";
+    }
+    if (data.pending_orders > 0) {
+        const b = document.getElementById("pendingBadge");
+        b.textContent = data.pending_orders; b.style.display = "inline-block";
+    }
+}
+
+function renderTrendChart(monthly) {
+    const ctx = document.getElementById("trendChart").getContext("2d");
+    const grad = ctx.createLinearGradient(0,0,0,280);
+    grad.addColorStop(0,"rgba(79,70,229,.25)"); grad.addColorStop(1,"rgba(79,70,229,0)");
+
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: monthly.map(m => m.label),
+            datasets: [{
+                label: "Orders",
+                data: monthly.map(m => m.orders),
+                borderColor: "#4f46e5",
+                backgroundColor: grad,
+                borderWidth: 2.5, tension: 0.35, fill: true,
+                pointRadius: 0, pointHoverRadius: 5,
+                pointHoverBackgroundColor: "#4f46e5",
+                pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2,
+            }]
+        },
+        options: {
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false}, tooltip:{backgroundColor:"#1a1a1a",padding:10,cornerRadius:6} },
+            scales:{
+                x:{grid:{display:false},ticks:{color:"#9ca3af",font:{size:11}}},
+                y:{grid:{color:"#ececea"},ticks:{color:"#9ca3af",font:{size:11}},beginAtZero:true},
+            }
+        }
+    });
+}
+
+function renderLowStock(items) {
+    const tbody = document.getElementById("lowStockBody");
+    if (!items.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">✓ All items above reorder threshold</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = items.slice(0,5).map(inv => {
+        const pct = inv.reorder_level > 0 ? Math.round(inv.quantity / inv.reorder_level * 100) : 0;
+        const status = inv.quantity === 0 ? "badge--danger" : inv.quantity <= inv.reorder_level * 0.5 ? "badge--danger" : "badge--warning";
+        const label  = inv.quantity === 0 ? "Out of Stock" : inv.quantity <= inv.reorder_level * 0.5 ? "Critical" : "Low Stock";
+        return `<tr>
+          <td><strong>${inv.product_name || "—"}</strong><div class="text-faint mono" style="font-size:11px">${inv.sku || ""}</div></td>
+          <td>${inv.warehouse_name || "—"}</td>
+          <td><div class="row"><span class="mono" style="width:32px">${inv.quantity}</span>
+            <div class="stock-bar"><span style="width:${Math.min(pct,100)}%;background:var(${pct<30?"--danger":"--warning"})"></span></div></div></td>
+          <td class="mono">${inv.reorder_level}</td>
+          <td><span class="badge ${status}"><span class="badge-dot"></span>${label}</span></td>
+          <td><button class="btn btn--ghost" style="font-size:12px" onclick="location.href='inventory.html'">Reorder</button></td>
+        </tr>`;
+    }).join("");
+}
+
+function renderActivity(orders) {
+    const feed = document.getElementById("activityFeed");
+    if (!orders.length) {
+        feed.innerHTML = `<p class="text-muted" style="font-size:13px;padding:8px 0">No recent activity.</p>`;
+        return;
+    }
+    const colorMap = { DELIVERED:"var(--success)", SHIPPED:"var(--info)", APPROVED:"var(--brand-2)",
+                       PENDING:"var(--warning)", CANCELLED:"var(--danger)", PROCESSING:"var(--accent)" };
+    feed.innerHTML = `<div class="activity-feed">` + orders.slice(0,6).map(o => `
+      <div class="activity-item">
+        <span class="activity-dot" style="background:${colorMap[o.status]||"var(--text-muted)"}"></span>
+        <div>
+          <div class="activity-text"><strong>${o.order_number}</strong> — ${o.status}</div>
+          <div class="activity-meta">${o.customer || "—"} · ₨ ${Number(o.total_amount||0).toLocaleString()}</div>
+        </div>
+      </div>`).join("") + `</div>`;
+}
+
+function renderStockout(items) {
+    const el = document.getElementById("stockoutForecast");
+    if (!items.length) {
+        el.innerHTML = `<div class="alert alert--info" style="margin:0">✓ No imminent stockouts predicted.</div>`;
+        return;
+    }
+    const critical = items.filter(i => i.status === "CRITICAL").length;
+    el.innerHTML = `
+      <div class="alert alert--${critical>0?"danger":"warning"}" style="margin:0 0 12px">
+        <strong>${items.length} product${items.length>1?"s":""}</strong> at risk of stockout.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:13px">
+        ${items.slice(0,4).map(i=>`
+          <div class="row">
+            <span style="flex:1">${i.product_name||"Product #"+i.product_id}</span>
+            <span class="badge ${i.status==="CRITICAL"?"badge--danger":"badge--warning"}">${Math.round(i.days_until_stockout)} days</span>
+          </div>`).join("")}
+      </div>`;
+}
+
+async function loadAll() {
+    const [kpisRes, lowStockRes, ordersRes, stockoutRes] = await Promise.all([
+        API.reports.kpis(),
+        API.inventory.lowStock(),
+        API.orders.list({ status:"", per_page:10, page:1 }),
+        API.inventory.predict(),
+    ]);
+
+    if (kpisRes?.ok) {
+        renderKPIs(kpisRes.data.data);
+        if (kpisRes.data.data.monthly_trend?.length) {
+            renderTrendChart(kpisRes.data.data.monthly_trend);
+        }
+    } else {
+
+        renderTrendChart([
+            {label:"May",orders:82},{label:"Jun",orders:95},{label:"Jul",orders:110},
+            {label:"Aug",orders:98},{label:"Sep",orders:124},{label:"Oct",orders:138},
+            {label:"Nov",orders:152},{label:"Dec",orders:144},{label:"Jan",orders:168},
+            {label:"Feb",orders:178},{label:"Mar",orders:196},{label:"Apr",orders:215},
+        ]);
+        document.getElementById("kpiGrid").innerHTML = `
+          <div class="kpi-card kpi-card--offline"><div class="kpi-label">Total Orders</div><div class="kpi-value">—</div><div class="kpi-delta" style="color:var(--warning)">⚠ API offline</div></div>
+          <div class="kpi-card"><div class="kpi-label">Low Stock</div><div class="kpi-value">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Pending</div><div class="kpi-value">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Inventory Value</div><div class="kpi-value">—</div></div>`;
+    }
+
+    if (lowStockRes?.ok) renderLowStock(lowStockRes.data.data || []);
+    if (ordersRes?.ok)   renderActivity(ordersRes.data.data   || []);
+    if (stockoutRes?.ok) renderStockout(stockoutRes.data.data || []);
+}
+
+function onRealtimeNotification(n) {
+    if (n.type === "LOW_STOCK" || n.type === "ORDER_STATUS") {
+        setTimeout(loadAll, 1000);
+    }
+}
+
+loadAll();
+</script>
+</body>
+</html>
